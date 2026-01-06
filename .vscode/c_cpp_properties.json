@@ -3,17 +3,11 @@
         {
             "name": "Win32",
             "includePath": [
-                "${workspaceFolder}/cpp",
-                "C:/Users/dyuma/AppData/Local/Programs/Python/Python313/include",
+                "${workspaceFolder}/**",
                 "C:/Users/dyuma/AppData/Local/Programs/Python/Python313/Include",
-                "C:/Users/dyuma/AppData/Local/Programs/Python/Python313/Lib/site-packages/pybind11/include",
-                "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/**/include",
-                "C:/Program Files (x86)/Windows Kits/10/include/**"
+                "C:/Users/dyuma/AppData/Local/Programs/Python/Python313/Lib/site-packages/pybind11/include"
             ],
-            "defines": [
-                "_DEBUG",
-                "UNICODE"
-            ],
+            "defines": [],
             "compilerPath": "cl.exe",
             "cStandard": "c17",
             "cppStandard": "c++20",

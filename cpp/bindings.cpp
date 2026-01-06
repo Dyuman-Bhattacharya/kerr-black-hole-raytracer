@@ -15,8 +15,9 @@ static double horizon(double M, double a) {
     return M + std::sqrt(discr);
 }
 
-// (i,j) pixel → normalized direction (nx,ny,nz) in camera frame.
-// z = forward (inward), x = right, y = up
+// Pixel → camera-frame direction (right, up, forward).
+// z is simply the camera optical axis, NOT guaranteed to be radial inward/outward.
+
 
 static void pixel_direction(int i, int j,
                             int width, int height,
@@ -47,18 +48,18 @@ static void build_p_from_pixel(int i, int j,
                                const mat4& g_cov,
                                vec4& p_cov_out)
 {
-    // (x_cam, y_cam, z_cam):
-    // x = right (+phi)
-    // y = up    (+theta)
-    // z = forward = *outward from the BH*
+    // k_tet = components in the camera tetrad frame (time, forward, up, right).
+    // "forward" means +e1, which is physically the inward direction (because build_tetrad enforces that).
+    // Do NOT interpret z as “outward”; it follows the tetrad, not camera geometry.
+
 
     double nx, ny, nz;
     pixel_direction(i, j, width, height, fov_deg, nx, ny, nz);
 
     // direction in CAMERA ORTHONORMAL FRAME
     // so nz attaches to +e1, not −e1
-    vec4 k_tet = { -1.0,     // time component (future-pointing)
-                    nz,      // forward  (radial OUT)
+    vec4 k_tet = { -1.0,     // Set k_tet[0] = -1 only to break degeneracy; normalization is irrelevant for null rays.
+                    nz,      
                     ny,      // up       (theta direction)
                     nx };    // right    (phi direction)
 
@@ -76,17 +77,6 @@ static void build_p_from_pixel(int i, int j,
         p_cov_out[mu] = s;
     }
 }
-
-
-vec4 tetrad_project(const mat4& tetrad, const vec4& k_coord)
-{
-    vec4 k_tet = {0,0,0,0};
-    for (int a=0; a<4; ++a)
-        for (int mu=0; mu<4; ++mu)
-            k_tet[a] += tetrad[a][mu] * k_coord[mu];
-    return k_tet;
-}
-
 
 // ------------------------------------------------------------------
 // Local helpers for timelike normalization in EF
@@ -119,7 +109,10 @@ py::array_t<double> render_frame_full(
     double dl,
     int max_steps,
     double r_escape,
-    py::array_t<double> sky_tex_in)
+    py::array_t<double> sky_tex_in,
+    double yaw_deg,
+    double pitch_deg,
+    double roll_deg)
 {
     using std::sqrt;
     using std::pow;
@@ -145,7 +138,8 @@ py::array_t<double> render_frame_full(
     mat4 ginv_cam  = metric_contra(x_obs[0], x_obs[1], x_obs[2], x_obs[3], M, a);
 
     mat4 tetrad;
-    build_tetrad(x_obs, u_obs, M, a, tetrad);
+    build_tetrad(x_obs, u_obs, M, a, yaw_deg, pitch_deg, roll_deg, tetrad);
+    //test_tetrad(x_obs, tetrad, M, a);
 
     // ------------------------------------------------------------
     // SKY TEXTURE
@@ -162,6 +156,8 @@ py::array_t<double> render_frame_full(
 
     int    N      = width * height;
     double r_plus = horizon(M, a);
+    double r_cap  = r_plus + 1e-2 * M;   // extremely tight gate
+    bool camera_outside = (x_obs[1] > r_plus);
 
     // ------------------------------------------------------------
     // MAIN GEODESIC LOOP (one ray per pixel)
@@ -176,25 +172,11 @@ py::array_t<double> render_frame_full(
         // Initial covariant momentum for this pixel
         // --------------------------------------------------------
         vec4 x = x_obs;
+        double r_min_along = x[1];   // track minimum radius reached by this ray
         vec4 p;
         build_p_from_pixel(i, j, width, height, fov_deg,
                            tetrad, g_cov_cam, p);
-
-        // Enforce inward-going branch (dr/dλ < 0 at the camera)
-        {
-            vec4 dx_test{};
-            for (int mu = 0; mu < 4; ++mu) {
-                double s = 0.0;
-                for (int nu = 0; nu < 4; ++nu)
-                    s += ginv_cam[mu][nu] * p[nu];
-                dx_test[mu] = s;
-            }
-            // dx_test[1] ≈ dr/dλ
-            if (dx_test[1] > 0.0) {
-                for (int mu = 0; mu < 4; ++mu)
-                    p[mu] = -p[mu];
-            }
-        }
+        bool ever_outward = false;   // Did dr/dλ ever become positive?
 
         // --------------------------------------------------------
         // Integrate null geodesic
@@ -209,7 +191,7 @@ py::array_t<double> render_frame_full(
             double r_old = x[1];
 
             // Already in asymptotic region → treat current (θ,φ) as sky direction
-            if (r_old > r_escape) {
+            if (camera_outside && r_old > r_escape) {
                 code      = 0;
                 theta_hit = x[2];
                 phi_hit   = x[3];
@@ -232,32 +214,43 @@ py::array_t<double> render_frame_full(
             vec4 k1p, k2p, k3p, k4p;
             vec4 xm,  pm;
 
-            rhs_null(x, p, k1x, k1p, M, a);
+            geodesic_rhs(x, p, k1x, k1p, M, a);
 
             for (int mu = 0; mu < 4; ++mu) {
                 xm[mu] = x[mu] + 0.5 * dl_eff * k1x[mu];
                 pm[mu] = p[mu] + 0.5 * dl_eff * k1p[mu];
             }
-            rhs_null(xm, pm, k2x, k2p, M, a);
+            geodesic_rhs(xm, pm, k2x, k2p, M, a);
 
             for (int mu = 0; mu < 4; ++mu) {
                 xm[mu] = x[mu] + 0.5 * dl_eff * k2x[mu];
                 pm[mu] = p[mu] + 0.5 * dl_eff * k2p[mu];
             }
-            rhs_null(xm, pm, k3x, k3p, M, a);
+            geodesic_rhs(xm, pm, k3x, k3p, M, a);
 
             for (int mu = 0; mu < 4; ++mu) {
                 xm[mu] = x[mu] + dl_eff * k3x[mu];
                 pm[mu] = p[mu] + dl_eff * k3p[mu];
             }
-            rhs_null(xm, pm, k4x, k4p, M, a);
+            geodesic_rhs(xm, pm, k4x, k4p, M, a);
 
             for (int mu = 0; mu < 4; ++mu) {
                 x[mu] += dl_eff * (k1x[mu] + 2.0*k2x[mu] + 2.0*k3x[mu] + k4x[mu]) / 6.0;
                 p[mu] += dl_eff * (k1p[mu] + 2.0*k2p[mu] + 2.0*k3p[mu] + k4p[mu]) / 6.0;
             }
 
+            // Compute dr/dλ using the inverse metric at the CURRENT ray position
+            mat4 ginv_here = metric_contra(x[0], x[1], x[2], x[3], M, a);
+
+            double dr_dl = 0.0;
+            for (int nu = 0; nu < 4; ++nu)
+                dr_dl += ginv_here[1][nu] * p[nu];
+
+            if (dr_dl > 0.0)
+                ever_outward = true;
+
             double r_new = x[1];
+            if (r_new < r_min_along) r_min_along = r_new;
 
             // Horizon crossing: sign change in (r - r_plus)
             if ((r_old - r_plus) * (r_new - r_plus) <= 0.0 && r_old > r_plus) {
@@ -276,17 +269,18 @@ py::array_t<double> render_frame_full(
             }
         }
 
-        // If we ran out of steps without classification, default
-        if (!finished) {
-            if (x[1] > r_plus) {
-                // treat as escaped sky ray
-                code      = 0;
-                theta_hit = x[2];
-                phi_hit   = x[3];
-            } else {
-                // very near or inside the horizon
+        if (camera_outside) {
+            // Outside horizon: keep speckle fix
+            if (r_min_along < r_cap)
                 code = 1;
-            }
+            else
+                code = 0;
+        } else {
+            // Inside horizon: classify by turning point
+            if (ever_outward)
+                code = 0;   // sees external universe
+            else
+                code = 1;   // pure black
         }
 
         // --------------------------------------------------------
@@ -351,7 +345,7 @@ py::array_t<double> render_frame_full(
         }
         else
         {
-            // code == 1 or no sky texture: black (event horizon)
+            // If ray falls into hole or texture unavailable → return black pixel.
             R = G = B = 0.0;
         }
 
@@ -422,11 +416,11 @@ py::tuple integrate_timelike_to_rmin(py::array_t<double> x0_in,
         if (r <= r_min)
             break;
 
-        // --- RK4 step for timelike geodesic using rhs_null ---
+        // --- RK4 step for timelike geodesic using geodesic_rhs ---
         vec4 k1x, k2x, k3x, k4x;
         vec4 k1p, k2p, k3p, k4p;
 
-        rhs_null(x, p, k1x, k1p, M, a);
+        geodesic_rhs(x, p, k1x, k1p, M, a);
 
         vec4 xm, pm;
 
@@ -434,19 +428,19 @@ py::tuple integrate_timelike_to_rmin(py::array_t<double> x0_in,
             xm[mu] = x[mu] + 0.5 * d_tau * k1x[mu];
             pm[mu] = p[mu] + 0.5 * d_tau * k1p[mu];
         }
-        rhs_null(xm, pm, k2x, k2p, M, a);
+        geodesic_rhs(xm, pm, k2x, k2p, M, a);
 
         for (int mu = 0; mu < 4; ++mu) {
             xm[mu] = x[mu] + 0.5 * d_tau * k2x[mu];
             pm[mu] = p[mu] + 0.5 * d_tau * k2p[mu];
         }
-        rhs_null(xm, pm, k3x, k3p, M, a);
+        geodesic_rhs(xm, pm, k3x, k3p, M, a);
 
         for (int mu = 0; mu < 4; ++mu) {
             xm[mu] = x[mu] + d_tau * k3x[mu];
             pm[mu] = p[mu] + d_tau * k3p[mu];
         }
-        rhs_null(xm, pm, k4x, k4p, M, a);
+        geodesic_rhs(xm, pm, k4x, k4p, M, a);
 
         for (int mu = 0; mu < 4; ++mu) {
             x[mu] += d_tau * (k1x[mu] + 2*k2x[mu] + 2*k3x[mu] + k4x[mu]) / 6.0;
@@ -519,29 +513,6 @@ PYBIND11_MODULE(kerr_cpp, m) {
       },
       "Return covariant Kerr metric g_{mu nu} at (v,r,theta,phi)");
 
-    m.def("tetrad_project",
-      [](const py::array_t<double>& tetrad_in,
-         const py::array_t<double>& kcoord_in)
-{
-          auto T = tetrad_in.unchecked<2>();
-          auto K = kcoord_in.unchecked<1>();
-
-          vec4 k_coord = { K(0), K(1), K(2), K(3) };
-          mat4 tetrad;
-          for (int a = 0; a < 4; ++a)
-              for (int mu = 0; mu < 4; ++mu)
-                  tetrad[a][mu] = T(a, mu);
-
-          vec4 out = tetrad_project(tetrad, k_coord);
-
-          py::array_t<double> result({4});
-          auto R = result.mutable_unchecked<1>();
-          for (int i = 0; i < 4; ++i)
-              R(i) = out[i];
-          return result;
-      },
-      "Project coordinate 4-vector k_coord into camera tetrad frame");
-
     m.def("render_frame_full", &render_frame_full,
         py::arg("x_obs"),
         py::arg("u_obs"),
@@ -553,7 +524,11 @@ PYBIND11_MODULE(kerr_cpp, m) {
         py::arg("dl"),
         py::arg("max_steps"),
         py::arg("r_escape"),
-        py::arg("sky_texture"));
+        py::arg("sky_texture"),
+        py::arg("yaw_deg")   = 0.0,
+        py::arg("pitch_deg") = 0.0,
+        py::arg("roll_deg")  = 0.0);
+
 
     m.def("integrate_timelike_to_rmin", &integrate_timelike_to_rmin,
           py::arg("x0"),

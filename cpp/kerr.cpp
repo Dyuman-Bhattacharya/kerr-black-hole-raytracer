@@ -1,5 +1,10 @@
 #include "kerr.hpp"
 #include <cmath>
+#include <iostream>
+#include <iomanip>
+#include <pybind11/pybind11.h>
+namespace py = pybind11;
+
 
 mat4 metric_contra(double v, double r, double th, double ph, double M, double a) {
     (void)v; (void)ph;  // not used explicitly
@@ -114,7 +119,7 @@ std::array<mat4,4> metric_contra_derivs(
     return dginv;
 }
 
-void rhs_null(const vec4& x, const vec4& p,
+void geodesic_rhs(const vec4& x, const vec4& p,
               vec4& dx, vec4& dp,
               double M, double a) {
     double v  = x[0];
@@ -229,89 +234,210 @@ float M_PI=3.1415926;
 void build_tetrad(const vec4& x_obs,
                   const vec4& u_obs,
                   double M, double a,
+                  double yaw_deg, double pitch_deg, double roll_deg,
                   mat4& tet)
 {
-    // ---------------------------------------------------------
-    // Metric at observer
-    // ---------------------------------------------------------
-    mat4 g = metric_cov(x_obs[0], x_obs[1], x_obs[2], x_obs[3], M, a);
+    // Metric and inverse at observer position
+    mat4 g     = metric_cov  (x_obs[0], x_obs[1], x_obs[2], x_obs[3], M, a);
+    mat4 g_inv = metric_contra(x_obs[0], x_obs[1], x_obs[2], x_obs[3], M, a);
 
-    // ---------------------------------------------------------
-    // 0) TIME LEG = normalized 4-velocity
-    // ---------------------------------------------------------
-    vec4 e0 = normalize_timelike(u_obs, g);
+    // Time leg: normalized 4-velocity (future-directed timelike)
+    vec4 e0 = normalize_timelike(u_obs, g);  // g(e0,e0) = -1
 
-    // ---------------------------------------------------------
-    // 1) SPATIAL SEEDS (coordinate basis)
-    // ---------------------------------------------------------
-    vec4 X = {0,1,0,0};   // radial (outward)
-    vec4 Y = {0,0,1,0};   // polar
-    vec4 Z = {0,0,0,1};   // azimuthal
-
-    // ---------------------------------------------------------
-    // Helper: project v orthogonal to e (metric)
-    // ---------------------------------------------------------
-    auto proj = [&](vec4 v, const vec4& e) {
+    // Lorentzian Gram–Schmidt projector:
+    // v -> v - [(v·e)/(e·e)] e   (works for timelike or spacelike e)
+    auto proj = [&](vec4 v, const vec4& e) -> vec4 {
         double c = ip(v, e, g);
-        for(int mu=0; mu<4; ++mu)
-            v[mu] -= c * e[mu];
+        double n = ip(e, e, g);
+        if (std::fabs(n) < 1e-14)
+            return v;  // don't try to project on (numerically) null vector
+        for (int mu = 0; mu < 4; ++mu)
+            v[mu] -= (c / n) * e[mu];
         return v;
     };
 
-    // ---------------------------------------------------------
-    // 2) FORWARD VECTOR: inward radial direction
-    // ---------------------------------------------------------
-    vec4 e1 = X;        // start from outward radial
-    e1 = proj(e1, e0);  // make it spatial in the rest frame
-    e1 = normalize_spacelike(e1, g);
+    // ---------------------------------------------------------------------
+    // 1. Forward leg e1: roughly radial direction, orthogonal to e0
+    // ---------------------------------------------------------------------
+    vec4 e1_seed = {0.0, 1.0, 0.0, 0.0};  // coordinate r-direction
+    vec4 e1 = proj(e1_seed, e0);          // remove time component
+    e1 = normalize_spacelike(e1, g);      // g(e1,e1) = +1
 
-    // enforce INWARD orientation: want e1 opposite to X
-    double s1 = ip(e1, X, g);
-    if (s1 > 0.0) {
-        for (int mu = 0; mu < 4; ++mu)
-            e1[mu] = -e1[mu];
-    }
-
-    // ---------------------------------------------------------
-    // 3) UP VECTOR: polar direction
-    // ---------------------------------------------------------
-    vec4 e2 = Y;
-    e2 = proj(e2, e0);
+    // ---------------------------------------------------------------------
+    // 2. Up leg e2: θ-direction, orthogonal to e0 and e1
+    // ---------------------------------------------------------------------
+    vec4 e2_seed = {0.0, 0.0, 1.0, 0.0};
+    vec4 e2 = proj(e2_seed, e0);
     e2 = proj(e2, e1);
     e2 = normalize_spacelike(e2, g);
 
-    // ---------------------------------------------------------
-    // 4) RIGHT VECTOR: azimuthal direction
-    // ---------------------------------------------------------
-    vec4 e3 = Z;
-    e3 = proj(e3, e0);
+    // ---------------------------------------------------------------------
+    // 3. Right leg e3: φ-direction, orthogonal to e0, e1, e2
+    // ---------------------------------------------------------------------
+    vec4 e3_seed = {0.0, 0.0, 0.0, 1.0};
+    vec4 e3 = proj(e3_seed, e0);
     e3 = proj(e3, e1);
     e3 = proj(e3, e2);
     e3 = normalize_spacelike(e3, g);
 
-    // ---------------------------------------------------------
-    // 5) APPLY CAMERA TILT (pure rotation in tetrad space)
-    // ---------------------------------------------------------
-    double eps = 0.0 * M_PI / 180.0;
+    // ---------------------------------------------------------------------
+    // 4. Ensure "forward" (e1) is actually inward: dr/dλ < 0 for -e0+e1
+    // ---------------------------------------------------------------------
+    vec4 k_coord{};
+    for (int mu = 0; mu < 4; ++mu)
+        k_coord[mu] = -e0[mu] + e1[mu];   // null direction candidate
 
-    vec4 e1_new, e2_new;
-    for(int mu=0; mu<4; ++mu) {
-        e1_new[mu] = std::cos(eps)*e1[mu] + std::sin(eps)*e2[mu];
-        e2_new[mu] = -std::sin(eps)*e1[mu] + std::cos(eps)*e2[mu];
+    // p_mu = g_{μν} k^ν
+    vec4 p_test{};
+    for (int mu = 0; mu < 4; ++mu) {
+        double s = 0.0;
+        for (int nu = 0; nu < 4; ++nu)
+            s += g[mu][nu] * k_coord[nu];
+        p_test[mu] = s;
     }
 
-    e1 = normalize_spacelike(e1_new, g);
-    e2 = proj(e2_new, e0);
-    e2 = proj(e2, e1);
-    e2 = normalize_spacelike(e2, g);
+    // dr/dλ = k^r = g^{rν} p_ν   (index 1 is r)
+    double dr = 0.0;
+    for (int nu = 0; nu < 4; ++nu)
+        dr += g_inv[1][nu] * p_test[nu];
 
-    // ---------------------------------------------------------
-    // 6) STORE FINAL TETRAD
-    // ---------------------------------------------------------
-    for(int mu=0; mu<4; ++mu) {
+    // If this null direction goes outward (dr > 0), flip spatial triad
+    if (dr > 0.0) {
+        for (int mu = 0; mu < 4; ++mu) {
+            e1[mu] = -e1[mu];
+            e2[mu] = -e2[mu];
+            e3[mu] = -e3[mu];
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // 5. Apply yaw / pitch / roll to spatial triad (e1,e2,e3)
+    //    Uses existing global M_PI from your file.
+    // ---------------------------------------------------------------------
+    double cy = std::cos(yaw_deg   * M_PI / 180.0);
+    double sy = std::sin(yaw_deg   * M_PI / 180.0);
+    double cp = std::cos(pitch_deg * M_PI / 180.0);
+    double sp = std::sin(pitch_deg * M_PI / 180.0);
+    double cr = std::cos(roll_deg  * M_PI / 180.0);
+    double sr = std::sin(roll_deg  * M_PI / 180.0);
+
+    // Same rotation convention you already had
+    double R[3][3] = {
+        { cy*cr + sy*sp*sr,   sr*cp,   -sy*cr + cy*sp*sr },
+        { -cy*sr + sy*sp*cr,  cr*cp,    sr*sy + cy*sp*cr },
+        { sy*cp,              -sp,      cy*cp            }
+    };
+
+    vec4 e1_r{}, e2_r{}, e3_r{};
+    for (int mu = 0; mu < 4; ++mu) {
+        double v1 = e1[mu];
+        double v2 = e2[mu];
+        double v3 = e3[mu];
+
+        e1_r[mu] = R[0][0]*v1 + R[0][1]*v2 + R[0][2]*v3;
+        e2_r[mu] = R[1][0]*v1 + R[1][1]*v2 + R[1][2]*v3;
+        e3_r[mu] = R[2][0]*v1 + R[2][1]*v2 + R[2][2]*v3;
+    }
+
+    // Re-orthonormalize after rotation, just to kill numerical drift
+    e1 = normalize_spacelike(e1_r, g);
+    e2 = proj(e2_r, e1);
+    e2 = normalize_spacelike(e2, g);
+    e3 = proj(e3_r, e1);
+    e3 = proj(e3, e2);
+    e3 = normalize_spacelike(e3, g);
+
+    // ---------------------------------------------------------------------
+    // 6. Store tetrad as rows: tetrad[a][mu] = e_(a)^μ
+    // ---------------------------------------------------------------------
+    for (int mu = 0; mu < 4; ++mu) {
         tet[0][mu] = e0[mu];  // time
         tet[1][mu] = e1[mu];  // forward (inward)
         tet[2][mu] = e2[mu];  // up
         tet[3][mu] = e3[mu];  // right
+    }
+}
+
+//==============================================================
+//   TETRAD DIAGNOSTIC — RUN THIS AFTER build_tetrad()
+//==============================================================
+
+void test_tetrad(const vec4& x,
+                 const mat4& tetrad,
+                 double M, double a)
+{
+    mat4 g     = metric_cov  (x[0], x[1], x[2], x[3], M, a);
+    mat4 g_inv = metric_contra(x[0], x[1], x[2], x[3], M, a);
+
+    // Compute G_ab = g_{μν} e_a^μ e_b^ν
+    double G[4][4];
+    for (int a = 0; a < 4; ++a) {
+        for (int b = 0; b < 4; ++b) {
+            double s = 0.0;
+            for (int mu = 0; mu < 4; ++mu)
+                for (int nu = 0; nu < 4; ++nu)
+                    s += tetrad[a][mu] * g[mu][nu] * tetrad[b][nu];
+            G[a][b] = s;
+        }
+    }
+
+    bool ok = true;
+
+    // --- Check time leg ---
+    if (std::fabs(G[0][0] + 1.0) > 1e-6) {
+        py::print("[TETRAD ERROR] g(e0,e0) =", G[0][0], "(expected -1)");
+        ok = false;
+    }
+
+    // --- Check spatial legs ---
+    for (int i = 1; i < 4; ++i) {
+        if (std::fabs(G[i][i] - 1.0) > 1e-6) {
+            py::print("[TETRAD ERROR] g(e", i, ",e", i, ") =", G[i][i], "(expected +1)");
+            ok = false;
+        }
+    }
+
+    // --- Check cross terms ---
+    for (int a = 0; a < 4; ++a) {
+        for (int b = 0; b < 4; ++b) {
+            if (a == b) continue;
+            if (std::fabs(G[a][b]) > 1e-6) {
+                py::print("[TETRAD ERROR] g(e", a, ",e", b, ") =", G[a][b], "(expected 0)");
+                ok = false;
+            }
+        }
+    }
+
+    // --- Check inward-pointing direction ---
+    vec4 e0{}, e1{};
+    for (int mu = 0; mu < 4; ++mu) {
+        e0[mu] = tetrad[0][mu];
+        e1[mu] = tetrad[1][mu];
+    }
+
+    vec4 k{};  // null direction candidate
+    for (int mu = 0; mu < 4; ++mu)
+        k[mu] = -e0[mu] + e1[mu];
+
+    vec4 p{};
+    for (int mu = 0; mu < 4; ++mu) {
+        double s = 0.0;
+        for (int nu = 0; nu < 4; ++nu)
+            s += g[mu][nu] * k[nu];
+        p[mu] = s;
+    }
+
+    double dr = 0.0;
+    for (int nu = 0; nu < 4; ++nu)
+        dr += g_inv[1][nu] * p[nu];
+
+    if (dr >= 0.0) {
+        py::print("[TETRAD ERROR] forward leg is NOT inward: dr/dλ =", dr, "(expected < 0)");
+        ok = false;
+    }
+
+    // --- Final report ---
+    if (ok) {
+        py::print("[TETRAD OK] Orthonormal and inward.");
     }
 }
