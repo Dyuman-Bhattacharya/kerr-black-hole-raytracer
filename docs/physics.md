@@ -77,17 +77,17 @@ The same Hamiltonian system is used for both null and timelike curves.
 
 - **Null rays** satisfy
 
-  $$
+$$
   g^{\mu\nu} p_\mu p_\nu = 0.
-  $$
+$$
 
   These are used for ray tracing.
 
 - **Timelike observer trajectories** satisfy
 
-  $$
+$$
   g^{\mu\nu} p_\mu p_\nu = -1,
-  $$
+$$
 
   enforced by explicit normalization during integration.
 
@@ -108,9 +108,9 @@ Implementation details:
 - The four-velocity is normalized so that $g_{\mu\nu} u^\mu u^\nu = -1$.
 - The corresponding covariant momentum is
 
-  $$
+$$
   p_\mu = g_{\mu\nu} u^\nu.
-  $$
+$$
 
 - After each integration step, the four-velocity is recomputed from $p_\mu$ and renormalized to control numerical drift.
 
@@ -148,15 +148,15 @@ For each image pixel:
 2. This direction is combined with the timelike leg to form a **past-directed null vector** in the tetrad frame.
 3. The null vector is mapped to coordinates via
 
-   $$
+$$
    k^\mu = e_{(a)}^\mu k^{(a)}.
-   $$
+$$
 
 4. The corresponding covariant momentum is obtained as
 
-   $$
+$$
    p_\mu = g_{\mu\nu} k^\nu.
-   $$
+$$
 
 The resulting $(x^\mu, p_\mu)$ serves as the initial condition for null geodesic integration.
 
