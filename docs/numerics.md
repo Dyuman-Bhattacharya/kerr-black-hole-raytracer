@@ -7,10 +7,13 @@ This document describes the **numerical strategy actually used in the code**, in
 ## 1. Phase-space formulation
 
 All curves—both null rays and timelike observer worldlines—are evolved in **phase space**
+
 $$
 (x^\mu, p_\mu),
 $$
+
 using Hamilton’s equations derived from
+
 $$
 H(x,p) = \tfrac12\, g^{\mu\nu}(x)\, p_\mu p_\nu.
 $$
@@ -33,6 +36,7 @@ Its derivatives with respect to coordinates are handled as follows:
 - $\partial_v g^{\mu\nu} = 0$ and $\partial_\phi g^{\mu\nu} = 0$, reflecting stationarity and axisymmetry.
 
 These derivatives enter only through the momentum evolution equation
+
 $$
 \frac{dp_\mu}{d\lambda}
 = -\tfrac12 \, \partial_\mu g^{\alpha\beta} \, p_\alpha p_\beta.
@@ -64,11 +68,13 @@ For timelike trajectories, integration is performed in proper time $\tau$ with a
 Timelike observer trajectories are evolved using the same Hamiltonian system as null rays, with additional normalization steps:
 
 1. The initial four-velocity $u^\mu$ is normalized so that
+
    $$
    g_{\mu\nu} u^\mu u^\nu = -1.
    $$
 
 2. The corresponding momentum is set as
+
    $$
    p_\mu = g_{\mu\nu} u^\nu.
    $$

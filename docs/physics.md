@@ -12,18 +12,22 @@ The simulation models **relativistic imaging in Kerr spacetime**, as experienced
 The background spacetime is **Kerr**, characterized by mass $M$ and spin parameter $a$.
 
 All computations are performed in **ingoing (advanced) Eddington–Finkelstein–type coordinates**
+
 $$
 x^\mu = (v, r, \theta, \phi),
 $$
+
 with metric signature $(-, +, +, +)$.
 
 We define the standard Kerr scalars
+
 $$
 \Sigma = r^2 + a^2 \cos^2\theta, \qquad
 \Delta = r^2 - 2 M r + a^2.
 $$
 
 The use of ingoing coordinates ensures regularity at the **future event horizon**
+
 $$
 r_+ = M + \sqrt{M^2 - a^2}.
 $$
@@ -37,16 +41,20 @@ Both the **covariant metric** $g_{\mu\nu}$ and the **contravariant metric** $g^{
 All geodesics—both null rays and timelike observer trajectories—are evolved using a **Hamiltonian phase-space formulation**.
 
 The Hamiltonian is
+
 $$
 H(x,p) = \tfrac12 \, g^{\mu\nu}(x)\, p_\mu p_\nu,
 $$
+
 where $p_\mu$ is the covariant momentum.
 
 Hamilton’s equations are
+
 $$
 \frac{dx^\mu}{d\lambda} = \frac{\partial H}{\partial p_\mu}
 = g^{\mu\nu}(x)\, p_\nu,
 $$
+
 $$
 \frac{dp_\mu}{d\lambda} = -\frac{\partial H}{\partial x^\mu}
 = -\tfrac12 \, \partial_\mu g^{\alpha\beta}(x)\, p_\alpha p_\beta.
@@ -68,15 +76,19 @@ Accordingly:
 The same Hamiltonian system is used for both null and timelike curves.
 
 - **Null rays** satisfy
+
   $$
   g^{\mu\nu} p_\mu p_\nu = 0.
   $$
+
   These are used for ray tracing.
 
 - **Timelike observer trajectories** satisfy
+
   $$
   g^{\mu\nu} p_\mu p_\nu = -1,
   $$
+
   enforced by explicit normalization during integration.
 
 The character of the geodesic is determined entirely by the **initial momentum**, not by separate equations of motion.
@@ -86,6 +98,7 @@ The character of the geodesic is determined entirely by the **initial momentum**
 ## 4. Camera worldline (timelike observer)
 
 The camera follows a **timelike geodesic** $$x^\mu(\tau)$$, with four-velocity
+
 $$
 u^\mu = \frac{dx^\mu}{d\tau}.
 $$
@@ -94,9 +107,11 @@ Implementation details:
 - The user supplies an initial position $x^\mu_0$ and four-velocity $u^\mu_0$.
 - The four-velocity is normalized so that $g_{\mu\nu} u^\mu u^\nu = -1$.
 - The corresponding covariant momentum is
+
   $$
   p_\mu = g_{\mu\nu} u^\nu.
   $$
+
 - After each integration step, the four-velocity is recomputed from $p_\mu$ and renormalized to control numerical drift.
 
 This procedure yields a stable timelike worldline suitable for frame-by-frame rendering.
@@ -106,9 +121,11 @@ This procedure yields a stable timelike worldline suitable for frame-by-frame re
 ## 5. Local camera frame (tetrad)
 
 At each camera event, an **orthonormal tetrad**
+
 $$
 \{ e_{(0)}^\mu, e_{(1)}^\mu, e_{(2)}^\mu, e_{(3)}^\mu \}
 $$
+
 is constructed.
 
 - $e_{(0)}^\mu = u^\mu$ is the timelike leg.
@@ -130,10 +147,13 @@ For each image pixel:
 1. A direction is constructed in the **camera frame** based on the field of view.
 2. This direction is combined with the timelike leg to form a **past-directed null vector** in the tetrad frame.
 3. The null vector is mapped to coordinates via
+
    $$
    k^\mu = e_{(a)}^\mu k^{(a)}.
    $$
+
 4. The corresponding covariant momentum is obtained as
+
    $$
    p_\mu = g_{\mu\nu} k^\nu.
    $$

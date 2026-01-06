@@ -8,9 +8,11 @@ It exists solely to eliminate ambiguity; it contains no derivations.
 ## Coordinates and ordering
 
 All spacetime quantities are expressed in **ingoing (advanced) Kerr coordinates**
+
 $$
 x^\mu = (v,\ r,\ \theta,\ \phi),
 $$
+
 with this ordering used **everywhere** in the code and Python bindings.
 
 - $v$: advanced time coordinate  
@@ -47,6 +49,7 @@ Summation over repeated indices is assumed.
 - Velocities and tetrad legs are typically contravariant vectors.
 
 Raising and lowering of indices is performed using the Kerr metric:
+
 $$
 p_\mu = g_{\mu\nu} u^\nu, \qquad
 u^\mu = g^{\mu\nu} p_\nu.
@@ -66,10 +69,13 @@ The same Hamiltonian system is used in both cases; the curve type is determined 
 ## Normalization conditions
 
 - Timelike four-velocities satisfy
+
   $$
   g_{\mu\nu} u^\mu u^\nu = -1.
   $$
+
 - Null momenta satisfy
+
   $$
   g^{\mu\nu} p_\mu p_\nu = 0.
   $$
@@ -104,6 +110,7 @@ Null rays are **back-traced** from the camera into the external sky:
 ## Horizon definition
 
 The future event horizon is defined as
+
 $$
 r_+ = M + \sqrt{M^2 - a^2}.
 $$
