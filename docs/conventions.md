@@ -70,15 +70,15 @@ The same Hamiltonian system is used in both cases; the curve type is determined 
 
 - Timelike four-velocities satisfy
 
-  $$
+$$
   g_{\mu\nu} u^\mu u^\nu = -1.
-  $$
+$$
 
 - Null momenta satisfy
 
-  $$
+$$
   g^{\mu\nu} p_\mu p_\nu = 0.
-  $$
+$$
 
 Timelike trajectories are explicitly renormalized during integration to control numerical drift.
 
