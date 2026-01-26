@@ -93,8 +93,6 @@ Timelike trajectories are explicitly renormalized during integration to control 
 
 The spatial triad is orthonormalized with respect to the Kerr metric.
 
-A sign check enforces that the forward direction corresponds to **decreasing radial coordinate $r$**.
-
 ---
 
 ## Ray-tracing direction

@@ -100,6 +100,15 @@ static void normalize_timelike_inplace(vec4& u, const mat4& g)
         u[mu] /= s;                 // g(u,u) ≈ -1 afterward (for n<0)
 }
 
+static double null_hamiltonian(const vec4& p, const mat4& ginv)
+{
+    double H = 0.0;
+    for (int mu = 0; mu < 4; ++mu)
+        for (int nu = 0; nu < 4; ++nu)
+            H += ginv[mu][nu] * p[mu] * p[nu];
+    return 0.5 * H;
+}
+
 py::array_t<double> render_frame_full(
     py::array_t<double> x_obs_in, 
     py::array_t<double> u_obs_in,
@@ -199,15 +208,34 @@ py::array_t<double> render_frame_full(
                 break;
             }
 
-            // Adaptive step size near hole / far out
+            // Adaptive step size: radius + curvature proxy
             double dr_h   = r_old - r_plus;
             double dl_eff = dl;
 
-            if (r_old > 80.0)      dl_eff *= 8.0;
-            else if (r_old > 40.0) dl_eff *= 4.0;
+            // Far-field speedup 
+            if (r_old > 80.0)      dl_eff *= 6.0;
+            else if (r_old > 40.0) dl_eff *= 3.0;
+
+            // Near-horizon refinement 
             if (dr_h < 5.0) dl_eff *= 0.5;
             if (dr_h < 2.0) dl_eff *= 0.5;
             if (dr_h < 1.0) dl_eff *= 0.4;
+
+            // Curvature / bending proxy using current RHS
+            vec4 dx_tmp, dp_tmp;
+            geodesic_rhs(x, p, dx_tmp, dp_tmp, M, a);
+
+            double dp_norm2 = 0.0;
+            for (int mu = 0; mu < 4; ++mu)
+                dp_norm2 += dp_tmp[mu] * dp_tmp[mu];
+
+            double dp_norm = std::sqrt(dp_norm2);
+
+            // Tighten step when momentum rotates rapidly
+            if (dp_norm > 0.5) dl_eff *= 0.5;
+            if (dp_norm > 1.0) dl_eff *= 0.25;
+
+
 
             // RK4 step
             vec4 k1x, k2x, k3x, k4x;
@@ -241,6 +269,21 @@ py::array_t<double> render_frame_full(
 
             // Compute dr/dλ using the inverse metric at the CURRENT ray position
             mat4 ginv_here = metric_contra(x[0], x[1], x[2], x[3], M, a);
+
+            double H = null_hamiltonian(p, ginv_here);
+
+            if (std::fabs(H) > 1e-8) {
+                // Adjust only p_v to restore null condition
+                // Solve g^{vv} p_v^2 + 2 g^{v i} p_v p_i + g^{ij} p_i p_j = 0
+                // Linearized correction:
+                double A = ginv_here[0][0];
+                double B = 0.0;
+                for (int i = 1; i < 4; ++i)
+                    B += ginv_here[0][i] * p[i];
+
+                if (std::fabs(A) > 1e-12)
+                    p[0] = -B / A;
+            }
 
             double dr_dl = 0.0;
             for (int nu = 0; nu < 4; ++nu)
@@ -512,6 +555,33 @@ PYBIND11_MODULE(kerr_cpp, m) {
           return outer;
       },
       "Return covariant Kerr metric g_{mu nu} at (v,r,theta,phi)");
+
+    m.def(
+        "null_hamiltonian",
+        [](py::array_t<double> p_in,
+           py::array_t<double> x_in,
+           double M, double a)
+        {
+            auto p = p_in.unchecked<1>();
+            auto x = x_in.unchecked<1>();
+
+            vec4 P = { p(0), p(1), p(2), p(3) };
+            vec4 X = { x(0), x(1), x(2), x(3) };
+
+            mat4 ginv = metric_contra(
+                X[0], X[1], X[2], X[3],
+                M, a
+            );
+
+            return null_hamiltonian(P, ginv);
+        },
+        py::arg("p"),
+        py::arg("x"),
+        py::arg("M"),
+        py::arg("a"),
+        "Return H = 1/2 g^{mu nu}(x) p_mu p_nu (should be 0 for null geodesics)."
+    );
+
 
     m.def("render_frame_full", &render_frame_full,
         py::arg("x_obs"),

@@ -1,6 +1,6 @@
 # Numerical Methods
 
-This document describes the **numerical strategy actually used in the code**, including integrators, termination criteria, and practical heuristics.  
+This document describes the **numerical strategy used in the code**, including integrators, termination criteria, and practical heuristics.  
 
 ---
 
@@ -32,7 +32,7 @@ The contravariant metric $g^{\mu\nu}(r,\theta)$ is implemented analytically.
 
 Its derivatives with respect to coordinates are handled as follows:
 
-- $\partial_r g^{\mu\nu}$ and $\partial_\theta g^{\mu\nu}$ are computed numerically.
+- $\partial_r g^{\mu\nu}$ and $\partial_\theta g^{\mu\nu}$ are computed analytically.
 - $\partial_v g^{\mu\nu} = 0$ and $\partial_\phi g^{\mu\nu} = 0$, reflecting stationarity and axisymmetry.
 
 These derivatives enter only through the momentum evolution equation
@@ -48,18 +48,19 @@ $$
 
 All geodesics are evolved using a **fixed-step classical fourth-order Runge–Kutta (RK4)** scheme.
 
-- No adaptive error control is employed.
-- Stability is achieved through conservative step sizes and geometric regularity of the coordinate system.
+- No formal adaptive error estimator is employed.
+- Stability is achieved through conservative base step sizes combined with heuristic, state-dependent step-size scaling.
 
 ### Step-size heuristic
 
-For null rays, the affine step size $\Delta\lambda$ is scaled heuristically with radius:
-- Smaller steps are used near the black hole,
-- Larger steps are used far from the hole.
+For null rays, the affine step size $\Delta\lambda$ is adjusted heuristically based on:
 
-This heuristic is purely practical and is not derived from an error estimator.
+- radial distance from the black hole,
+- proximity to the event horizon,
+- local curvature effects inferred from the momentum evolution.
 
-For timelike trajectories, integration is performed in proper time $\tau$ with a user-specified step size.
+This strategy is pragmatic rather than error-controlled, and is intended to improve stability near the photon region and horizon while remaining computationally simple.
+
 
 ---
 
@@ -95,8 +96,6 @@ At each observer event, an orthonormal tetrad is constructed numerically:
 - The timelike leg is fixed to the normalized observer four-velocity.
 - The spatial legs are constructed via Gram–Schmidt orthonormalization with respect to the Kerr metric.
 
-A sign check ensures that the designated “forward” spatial leg points toward decreasing radial coordinate $r$.
-
 Yaw, pitch, and roll are implemented as explicit rotations of the spatial triad prior to orthonormalization.
 
 The tetrad defines the mapping between pixel directions and spacetime directions.
@@ -111,8 +110,6 @@ For each pixel:
 - This direction is combined with the timelike leg to form a **past-directed null vector**.
 - The null vector is mapped to spacetime coordinates using the tetrad.
 - The covariant momentum $p_\mu = g_{\mu\nu} k^\nu$ is used as the initial condition.
-
-Absolute scaling of the null momentum is irrelevant and is not fixed.
 
 ---
 
@@ -183,7 +180,7 @@ The numerical scheme prioritizes **clarity and robustness** over optimal perform
 
 Known limitations include:
 - lack of adaptive step-size control,
-- absence of conserved-quantity monitoring,
+- limited monitoring of conserved quantities (e.g. no Carter constant tracking),
 - heuristic near-horizon filtering,
 - no radiative transfer or frequency effects.
 

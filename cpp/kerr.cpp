@@ -226,7 +226,7 @@ static vec4 project_orthogonal(const vec4& v, const vec4& u, const mat4& g)
     return out;
 }
 
-float M_PI=3.1415926;
+float M_PI=3.1415926535897932384626;
 
 //==============================================================
 //  TETRAD BUILDER (EF–Kerr) — CLEAN, CORRECT, ORTHONORMAL
@@ -312,7 +312,7 @@ void build_tetrad(const vec4& x_obs,
 
     // ---------------------------------------------------------------------
     // 5. Apply yaw / pitch / roll to spatial triad (e1,e2,e3)
-    //    Uses existing global M_PI from your file.
+    //    Uses existing global M_PI.
     // ---------------------------------------------------------------------
     double cy = std::cos(yaw_deg   * M_PI / 180.0);
     double sy = std::sin(yaw_deg   * M_PI / 180.0);
@@ -352,7 +352,7 @@ void build_tetrad(const vec4& x_obs,
     // ---------------------------------------------------------------------
     for (int mu = 0; mu < 4; ++mu) {
         tet[0][mu] = e0[mu];  // time
-        tet[1][mu] = e1[mu];  // forward (inward)
+        tet[1][mu] = e1[mu];  // forward (camera optical axis; not necessarily inward after rotation)
         tet[2][mu] = e2[mu];  // up
         tet[3][mu] = e3[mu];  // right
     }
@@ -383,13 +383,13 @@ void test_tetrad(const vec4& x,
 
     bool ok = true;
 
-    // --- Check time leg ---
+    // --- Time leg ---
     if (std::fabs(G[0][0] + 1.0) > 1e-6) {
         py::print("[TETRAD ERROR] g(e0,e0) =", G[0][0], "(expected -1)");
         ok = false;
     }
 
-    // --- Check spatial legs ---
+    // --- Spatial legs ---
     for (int i = 1; i < 4; ++i) {
         if (std::fabs(G[i][i] - 1.0) > 1e-6) {
             py::print("[TETRAD ERROR] g(e", i, ",e", i, ") =", G[i][i], "(expected +1)");
@@ -397,7 +397,7 @@ void test_tetrad(const vec4& x,
         }
     }
 
-    // --- Check cross terms ---
+    // --- Orthogonality ---
     for (int a = 0; a < 4; ++a) {
         for (int b = 0; b < 4; ++b) {
             if (a == b) continue;
@@ -408,18 +408,19 @@ void test_tetrad(const vec4& x,
         }
     }
 
-    // --- Check inward-pointing direction ---
-    vec4 e0{}, e1{};
-    for (int mu = 0; mu < 4; ++mu) {
-        e0[mu] = tetrad[0][mu];
-        e1[mu] = tetrad[1][mu];
+    // --- Future-directed time leg check ---
+    // For EF coordinates, future-directed timelike vectors have v-component > 0
+    if (tetrad[0][0] <= 0.0) {
+        py::print("[TETRAD ERROR] e0 is not future-directed (v-component <= 0)");
+        ok = false;
     }
 
-    vec4 k{};  // null direction candidate
+    // --- Informational: direction of camera optical axis ---
+    // Construct null direction k = -e0 + e1
+    vec4 k{}, p{};
     for (int mu = 0; mu < 4; ++mu)
-        k[mu] = -e0[mu] + e1[mu];
+        k[mu] = -tetrad[0][mu] + tetrad[1][mu];
 
-    vec4 p{};
     for (int mu = 0; mu < 4; ++mu) {
         double s = 0.0;
         for (int nu = 0; nu < 4; ++nu)
@@ -431,13 +432,12 @@ void test_tetrad(const vec4& x,
     for (int nu = 0; nu < 4; ++nu)
         dr += g_inv[1][nu] * p[nu];
 
-    if (dr >= 0.0) {
-        py::print("[TETRAD ERROR] forward leg is NOT inward: dr/dλ =", dr, "(expected < 0)");
-        ok = false;
-    }
+    if (dr < 0.0)
+        py::print("[TETRAD INFO] camera forward points inward (dr/dλ =", dr, ")");
+    else
+        py::print("[TETRAD INFO] camera forward points outward (dr/dλ =", dr, ")");
 
     // --- Final report ---
-    if (ok) {
-        py::print("[TETRAD OK] Orthonormal and inward.");
-    }
+    if (ok)
+        py::print("[TETRAD OK] Orthonormal, future-directed, camera orientation free.");
 }

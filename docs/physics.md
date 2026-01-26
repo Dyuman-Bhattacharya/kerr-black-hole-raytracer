@@ -43,7 +43,7 @@ All geodesics—both null rays and timelike observer trajectories—are evolved 
 The Hamiltonian is
 
 $$
-H(x,p) = \tfrac12 \, g^{\mu\nu}(x)\, p_\mu p_\nu,
+H(x,p) = \tfrac12 \ g^{\mu\nu}(x)\ p_\mu p_\nu,
 $$
 
 where $p_\mu$ is the covariant momentum.
@@ -52,12 +52,12 @@ Hamilton’s equations are
 
 $$
 \frac{dx^\mu}{d\lambda} = \frac{\partial H}{\partial p_\mu}
-= g^{\mu\nu}(x)\, p_\nu,
+= g^{\mu\nu}(x)\ p_\nu,
 $$
 
 $$
 \frac{dp_\mu}{d\lambda} = -\frac{\partial H}{\partial x^\mu}
-= -\tfrac12 \, \partial_\mu g^{\alpha\beta}(x)\, p_\alpha p_\beta.
+= -\tfrac12 \ \partial_\mu g^{\alpha\beta}(x)\ p_\alpha p_\beta.
 $$
 
 These equations are implemented directly in the C++ core.
@@ -66,7 +66,7 @@ These equations are implemented directly in the C++ core.
 
 The metric depends explicitly only on $r$ and $\theta$.  
 Accordingly:
-- $\partial_r g^{\mu\nu}$ and $\partial_\theta g^{\mu\nu}$ are computed numerically,
+- $\partial_r g^{\mu\nu}$ and $\partial_\theta g^{\mu\nu}$ are computed analytically,
 - $\partial_v g^{\mu\nu} = \partial_\phi g^{\mu\nu} = 0$.
 
 ---
@@ -133,7 +133,6 @@ is constructed.
 - $e_{(2)}^\mu$ and $e_{(3)}^\mu$ span the transverse image plane.
 
 The spatial triad is orthonormalized with respect to the Kerr metric.  
-A sign check ensures that the forward direction corresponds to **decreasing radial coordinate** (inward-pointing).
 
 Yaw, pitch, and roll are implemented as rotations of the spatial triad prior to orthonormalization.
 
@@ -203,9 +202,6 @@ The sampled sky color is used directly (up to gamma correction).
 The current implementation **does not include**:
 - gravitational or Doppler redshift,
 - intensity modulation via $k\cdot u$,
-- emission from accretion disks or matter,
-- adaptive error-controlled integration,
-- explicit conservation checks (e.g. Carter constant).
 
 These omissions are intentional and reflect the current scope of the project.
 
@@ -213,6 +209,6 @@ These omissions are intentional and reflect the current scope of the project.
 
 ## 10. Scope
 
-The physics model implemented here is intended to provide a **clean, coordinate-aware, strong-field ray-tracing framework** for Kerr spacetime, suitable for studying relativistic lensing and observer-dependent imaging effects.
+The physics model implemented here is intended to provide a **clean, strong-field ray-tracing framework** for Kerr spacetime, suitable for studying relativistic lensing and observer-dependent imaging effects.
 
-It is a **first-principles geodesic simulation**, not an approximate visualization or post-Newtonian model.
+It is a **first-principles geodesic simulation**, not an approximate visualization.

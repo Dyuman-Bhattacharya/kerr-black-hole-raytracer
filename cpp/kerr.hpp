@@ -26,7 +26,7 @@ mat4 metric_cov(double v, double r, double th, double ph, double M, double a);
 
 // Build orthonormal tetrad e_(a)^μ at observer
 // tetrad[a][mu] = e_(a)^μ, with e_(0)=u_obs,
-// e_(1)=forward (inward), e_(2)=up, e_(3)=right.
+// e_(1)=forward (camera optical axis; not necessarily inward after rotation), e_(2)=up, e_(3)=right.
 void build_tetrad(const vec4& x_obs,
                   const vec4& u_obs,
                   double M, double a,
