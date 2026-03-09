@@ -1,18 +1,9 @@
 """
-Kerr Infall Ray Tracer
-======================
+Kerr Black Hole Ray Tracer package metadata.
 
-A modular Python package for simulating null geodesics and visualizing
-the optical appearance seen by an observer freely falling into a Kerr
-black hole.
+This repository is extension-centric.
+The computational core is the kerr_cpp pybind11 module built from cpp/.
+Notebook workflows in scripts/ orchestrate trajectories and rendering.
 
-Modules:
-    - metric:     Kerr metric and inverse in ingoing coordinates
-    - geodesic:   Hamiltonian geodesic integrator (null & timelike)
-    - observer:   Infalling observer worldline
-    - tetrad:     Camera tetrad construction
-    - scene:      Accretion disk geometry & emission
-    - raytrace:   Per-ray integration logic
-    - render_frame:  Frame rendering utilities
-    - main:       Batch frame generation / movie creation
+The src package is intentionally minimal.
 """
