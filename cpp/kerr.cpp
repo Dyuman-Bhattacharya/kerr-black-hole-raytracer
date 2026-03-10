@@ -2,6 +2,7 @@
 #include <cmath>
 #include <iostream>
 #include <iomanip>
+#include <stdexcept>
 #include <pybind11/pybind11.h>
 namespace py = pybind11;
 
@@ -200,8 +201,11 @@ static double ip(const vec4& a, const vec4& b, const mat4& g)
 
 static vec4 normalize_timelike(const vec4& u, const mat4& g)
 {
-    double n = ip(u, u, g);  // should be negative
-    double s = std::sqrt(std::fabs(n));
+    double n = ip(u, u, g);  // must be negative
+    if (!std::isfinite(n) || n >= -1e-14)
+        throw std::runtime_error(
+            "normalize_timelike: expected timelike u with g(u,u) < 0");
+    double s = std::sqrt(-n);
     vec4 out{};
     for (int mu = 0; mu < 4; ++mu) out[mu] = u[mu] / s;
     return out;
@@ -226,7 +230,7 @@ static vec4 project_orthogonal(const vec4& v, const vec4& u, const mat4& g)
     return out;
 }
 
-float M_PI=3.1415926535897932384626;
+constexpr double kPi = 3.141592653589793238462643383279502884;
 
 //==============================================================
 //  TETRAD BUILDER (EF–Kerr) — CLEAN, CORRECT, ORTHONORMAL
@@ -312,14 +316,13 @@ void build_tetrad(const vec4& x_obs,
 
     // ---------------------------------------------------------------------
     // 5. Apply yaw / pitch / roll to spatial triad (e1,e2,e3)
-    //    Uses existing global M_PI.
     // ---------------------------------------------------------------------
-    double cy = std::cos(yaw_deg   * M_PI / 180.0);
-    double sy = std::sin(yaw_deg   * M_PI / 180.0);
-    double cp = std::cos(pitch_deg * M_PI / 180.0);
-    double sp = std::sin(pitch_deg * M_PI / 180.0);
-    double cr = std::cos(roll_deg  * M_PI / 180.0);
-    double sr = std::sin(roll_deg  * M_PI / 180.0);
+    double cy = std::cos(yaw_deg   * kPi / 180.0);
+    double sy = std::sin(yaw_deg   * kPi / 180.0);
+    double cp = std::cos(pitch_deg * kPi / 180.0);
+    double sp = std::sin(pitch_deg * kPi / 180.0);
+    double cr = std::cos(roll_deg  * kPi / 180.0);
+    double sr = std::sin(roll_deg  * kPi / 180.0);
 
     // Same rotation convention you already had
     double R[3][3] = {

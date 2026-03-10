@@ -4,6 +4,7 @@
 #include <string>
 #include <omp.h>
 #include <cmath>
+#include <stdexcept>
 #include <thread>
 
 namespace py = pybind11;
@@ -92,12 +93,13 @@ static double ip_vec(const vec4& a, const vec4& b, const mat4& g)
 
 static void normalize_timelike_inplace(vec4& u, const mat4& g)
 {
-    double n = ip_vec(u, u, g);     // should be < 0 for timelike
-    double s = std::sqrt(std::fabs(n));
-    if (s == 0.0)
-        throw std::runtime_error("normalize_timelike_inplace: null vector");
+    double n = ip_vec(u, u, g);     // must be < 0 for timelike
+    if (!std::isfinite(n) || n >= -1e-14)
+        throw std::runtime_error(
+            "normalize_timelike_inplace: expected timelike u with g(u,u) < 0");
+    double s = std::sqrt(-n);
     for (int mu = 0; mu < 4; ++mu)
-        u[mu] /= s;                 // g(u,u) ≈ -1 afterward (for n<0)
+        u[mu] /= s;                 // g(u,u) ≈ -1 afterward
 }
 
 static double null_hamiltonian(const vec4& p, const mat4& ginv)
@@ -190,9 +192,10 @@ py::array_t<double> render_frame_full(
         // --------------------------------------------------------
         // Integrate null geodesic
         // --------------------------------------------------------
-        int    code      = 0;    // 0 = sky, 1 = horizon
-        double theta_hit = x[2]; // will be overwritten on escape
-        double phi_hit   = x[3];
+        int    code        = 1;    // 0 = sky, 1 = horizon/blocked
+        double theta_hit   = 0.0;  // valid only when has_sky_hit=true
+        double phi_hit     = 0.0;
+        bool   has_sky_hit = false;
         bool   finished  = false;
 
         for (int step = 0; step < max_steps; ++step)
@@ -204,6 +207,7 @@ py::array_t<double> render_frame_full(
                 code      = 0;
                 theta_hit = x[2];
                 phi_hit   = x[3];
+                has_sky_hit = true;
                 finished  = true;
                 break;
             }
@@ -273,16 +277,38 @@ py::array_t<double> render_frame_full(
             double H = null_hamiltonian(p, ginv_here);
 
             if (std::fabs(H) > 1e-8) {
-                // Adjust only p_v to restore null condition
-                // Solve g^{vv} p_v^2 + 2 g^{v i} p_v p_i + g^{ij} p_i p_j = 0
-                // Linearized correction:
+                // Adjust only p_v to restore null condition:
+                // A p_v^2 + 2 B p_v + C = 0
                 double A = ginv_here[0][0];
                 double B = 0.0;
+                double C = 0.0;
                 for (int i = 1; i < 4; ++i)
                     B += ginv_here[0][i] * p[i];
+                for (int i = 1; i < 4; ++i)
+                    for (int j = 1; j < 4; ++j)
+                        C += ginv_here[i][j] * p[i] * p[j];
 
-                if (std::fabs(A) > 1e-12)
-                    p[0] = -B / A;
+                double p0_old = p[0];
+
+                if (std::fabs(A) > 1e-14) {
+                    double disc = B * B - A * C;
+                    // Clamp tiny negative discriminants from roundoff.
+                    double scale = B * B + std::fabs(A * C) + 1.0;
+                    if (disc < 0.0 && disc > -1e-12 * scale)
+                        disc = 0.0;
+
+                    if (disc >= 0.0) {
+                        double sdisc = std::sqrt(disc);
+                        double p0_1 = (-B + sdisc) / A;
+                        double p0_2 = (-B - sdisc) / A;
+                        // Stay on the same branch by choosing the closer root.
+                        p[0] = (std::fabs(p0_1 - p0_old) < std::fabs(p0_2 - p0_old))
+                            ? p0_1 : p0_2;
+                    }
+                } else if (std::fabs(B) > 1e-14) {
+                    // Degenerate linear case: 2 B p_v + C = 0.
+                    p[0] = -C / (2.0 * B);
+                }
             }
 
             double dr_dl = 0.0;
@@ -307,6 +333,7 @@ py::array_t<double> render_frame_full(
                 code      = 0;
                 theta_hit = x[2];
                 phi_hit   = x[3];
+                has_sky_hit = true;
                 finished  = true;
                 break;
             }
@@ -331,7 +358,8 @@ py::array_t<double> render_frame_full(
         // --------------------------------------------------------
         double R = 0.0, G = 0.0, B = 0.0;
 
-        if (code == 0 && sky_h > 0 && sky_w > 0)
+        // Only sample sky when an actual sky-hit angle was recorded.
+        if (code == 0 && has_sky_hit && sky_h > 0 && sky_w > 0)
         {
             // Normalize angles into [0,π] and [0,2π)
             double th = theta_hit;
